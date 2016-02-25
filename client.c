@@ -104,19 +104,27 @@ int main(int argc, char *argv[])
 					cci_strerror(endpoint, ret));
 			continue;
 		}
+        
 
         switch (event->type) {
             case CCI_EVENT_RECV:
                 break;
             case CCI_EVENT_SEND:
                 break;
-            case CCI_EVENT_CONNECT_REQUEST:
-                break;
-            case CCI_EVENT_ACCEPT:
+            case CCI_EVENT_CONNECT:
+                *done = 1;
+
+                assert(event->connect.connection != NULL);
+                assert(event->connect.connection->context == CONNECT_CONTEXT);
+
+                *connection = event->connect.connection;
+
                 break;
             default:
+                fprintf(stderr,"ignoring event type %d\n", event->type);
                 break;
         }
+        cci_return_event(event);
     }
 
 	ret = cci_finalize();
