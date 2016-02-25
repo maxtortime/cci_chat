@@ -92,10 +92,27 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-    
+    char* msg;
+    int send_num = 0;
+
+    msg = malloc(sizeof(char) * 100);
+
     /* polling events */
     while(!done) {
         cci_event_t * event;
+        memset(msg,0,sizeof(msg));
+        printf("> ");
+        fgets(msg,100,stdin);
+
+        ret = cci_send(connection, msg, (uint32_t) strlen(msg),
+			       (void *)(uintptr_t) i, flags);
+
+		if (ret)
+			fprintf(stderr, "send %d failed with %s\n", send_num,
+				cci_strerror(endpoint, ret));
+		if (flags & CCI_FLAG_BLOCKING)
+			fprintf(stderr, "send %d completed with %d\n", send_num, ret);
+
 
         ret = cci_get_event(endpoint, &event);
 		if (ret != 0) {
@@ -109,17 +126,29 @@ int main(int argc, char *argv[])
         switch (event->type) {
             case CCI_EVENT_RECV:
                 break;
-            case CCI_EVENT_SEND:
-                break;
-            case CCI_EVENT_CONNECT:
-                *done = 1;
+            case CCI_EVENT_SEND: {
+                static int i = 0;
+                fprintf(stderr,"send %d completed with %d\n",
+                        (int)((uintptr_t) event->send.context),
+                        event->send.status);
 
+                assert(event->send.context == (void *)(uintptr_t)i);
+                i++;
+                assert(event->send.connection == connection);
+                assert(event->send.connection->context == CONNECT_CONTEXT);
+
+                if (done == 0) send_num++;
+                
+                break;
+                }
+            case CCI_EVENT_CONNECT: {
                 assert(event->connect.connection != NULL);
                 assert(event->connect.connection->context == CONNECT_CONTEXT);
 
-                *connection = event->connect.connection;
+                connection = event->connect.connection;
 
                 break;
+                 }
             default:
                 fprintf(stderr,"ignoring event type %d\n", event->type);
                 break;
@@ -133,6 +162,8 @@ int main(int argc, char *argv[])
 			cci_strerror(NULL, ret));
 		exit(EXIT_FAILURE);
 	}
+    
+    free(msg);
 
 	return 0;
 

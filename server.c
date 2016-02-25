@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
 	printf("Opened %s\n", uri);
 
     while(!done) {
+        int accept = 1;
         cci_event_t * event;
 
         ret = cci_get_event(endpoint, &event);
@@ -58,10 +59,25 @@ int main(int argc, char *argv[])
             case CCI_EVENT_SEND:
                 break;
             case CCI_EVENT_CONNECT_REQUEST:
+                /* inspect conn_req_t and decide to accept or reject */
+                if (accept) {
+                    /* associate this connect request with this endpoint */
+                    cci_accept(event, ACCEPT_CONTEXT);
+                } else {
+                    cci_reject(event);
+                }
                 break;
             case CCI_EVENT_ACCEPT:
+                fprintf(stderr, "completed accept\n");
+
+                assert(event->accept.connection != NULL);
+                assert(event->accept.connection->context == ACCEPT_CONTEXT);
+
+                connection = event->accept.connection;
+
                 break;
             default:
+                printf("event type %d\n",event->type);
                 break;
         }
     }
