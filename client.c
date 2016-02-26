@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <assert.h>
 
-int iters = 10;
 int send_done = 0;
 int recv_done = 0;
 int flags = 0;
@@ -14,11 +13,13 @@ int flags = 0;
 cci_conn_attribute_t attr = CCI_CONN_ATTR_RO;
 
 #define CONNECT_CONTEXT (void*)0xdeadbeef
-
+#define MSG_SIZE 128
 
 int main(int argc, char *argv[])
 {
-	int done = 0, ret, i = 0, c;
+	int done = 0, ret, c;
+    int send_ret;
+    static int i = 0;
 	uint32_t caps = 0;
 	char *server_uri = NULL;
 	cci_os_handle_t *fd = NULL;
@@ -28,7 +29,7 @@ int main(int argc, char *argv[])
 
 	while ((c = getopt(argc, argv, "h:c:b")) != -1) {
 		switch (c) {
-		case 'h':
+		case 'h': 
 			server_uri = strdup(optarg);
 			break;
 		case 'c':
@@ -95,49 +96,51 @@ int main(int argc, char *argv[])
     char* msg;
     int send_num = 0;
 
-    msg = malloc(sizeof(char) * 100);
+    msg = malloc(sizeof(char) * MSG_SIZE);
 
     /* polling events */
     while(!done) {
         cci_event_t * event;
-        memset(msg,0,sizeof(msg));
-        printf("> ");
-        fgets(msg,100,stdin);
-
-        ret = cci_send(connection, msg, (uint32_t) strlen(msg),
-			       (void *)(uintptr_t) i, flags);
-
-		if (ret)
-			fprintf(stderr, "send %d failed with %s\n", send_num,
-				cci_strerror(endpoint, ret));
-		if (flags & CCI_FLAG_BLOCKING)
-			fprintf(stderr, "send %d completed with %d\n", send_num, ret);
-
+        memset(msg,0,sizeof(msg)); 
 
         ret = cci_get_event(endpoint, &event);
 		if (ret != 0) {
-			if (ret != CCI_EAGAIN)
+			if (ret != CCI_EAGAIN) // 이벤트가 없으면 EAGAIN
 				fprintf(stderr, "cci_get_event() returned %s\n",
 					cci_strerror(endpoint, ret));
+            else
+            {
+                if(connection) {
+                    printf("> ");
+                    fgets(msg,MSG_SIZE,stdin); 
+                    send_ret = cci_send(connection, msg, (uint32_t) strlen(msg),(void*)NULL, flags);
+         
+                    if (send_ret)
+                        fprintf(stderr, "send %d failed with %s\n", send_done,
+                            cci_strerror(endpoint, send_ret));
+                    if (flags & CCI_FLAG_BLOCKING)
+                        fprintf(stderr, "send %d completed with %d\n", send_done, send_ret);
+                }
+            }
 			continue;
 		}
-        
 
+       
         switch (event->type) {
-            case CCI_EVENT_RECV:
+            case CCI_EVENT_RECV: {
+                assert(event->recv.connection == connection);
+                assert(event->recv.connection->context == CONNECT_CONTEXT);
+                fprintf(stderr, "%s\n", (char *) event->recv.ptr);
+
                 break;
+                }
             case CCI_EVENT_SEND: {
-                static int i = 0;
                 fprintf(stderr,"send %d completed with %d\n",
                         (int)((uintptr_t) event->send.context),
                         event->send.status);
-
-                assert(event->send.context == (void *)(uintptr_t)i);
                 i++;
-                assert(event->send.connection == connection);
-                assert(event->send.connection->context == CONNECT_CONTEXT);
 
-                if (done == 0) send_num++;
+                if (done == 0) send_done++;
                 
                 break;
                 }

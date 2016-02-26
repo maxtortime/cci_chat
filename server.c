@@ -8,12 +8,16 @@
 
 #define ACCEPT_CONTEXT (void*)0xfeebdaed
 #define SEND_CONTEXT (void*)0xdaedfeeb
+#define MSG_SIZE 128 
 
 int main(int argc, char *argv[])
 {
 	int ret, done = 0;
 	uint32_t caps = 0;
 	char *uri = NULL;
+    char* msg;
+    msg = calloc(MSG_SIZE, sizeof(char));
+
 	cci_endpoint_t *endpoint = NULL;
 	cci_os_handle_t *ep_fd = NULL;
 	cci_connection_t *connection = NULL;
@@ -41,8 +45,8 @@ int main(int argc, char *argv[])
 	}
 	printf("Opened %s\n", uri);
 
+    
     while(!done) {
-        int accept = 1;
         cci_event_t * event;
 
         ret = cci_get_event(endpoint, &event);
@@ -50,22 +54,39 @@ int main(int argc, char *argv[])
 			if (ret != CCI_EAGAIN)
 				fprintf(stderr, "cci_get_event() returned %s\n",
 					cci_strerror(endpoint, ret));
+            else {
+                if (connection) {
+                    printf("> ");
+                    fgets(msg, MSG_SIZE, stdin); 
+                    ret = cci_send(connection, msg, MSG_SIZE, SEND_CONTEXT, 0);
+
+                    if (ret)
+                        fprintf(stderr, "send returned %s\n",
+                            cci_strerror(endpoint, ret));
+                }
+            }
 			continue;
 		}
 
         switch (event->type) {
-            case CCI_EVENT_RECV:
-                break;
+            case CCI_EVENT_RECV: {
+
+                    assert(event->recv.connection == connection);
+                    assert(event->recv.connection-> context == ACCEPT_CONTEXT);
+                    
+                    fprintf(stderr, "%s\n", (char *) event->recv.ptr);
+                    
+                    break;
+                }
             case CCI_EVENT_SEND:
+                fprintf(stderr, "completed send\n");
+
+                assert(event->send.context == SEND_CONTEXT);
+                assert(event->send.connection == connection);
+                assert(event->send.connection->context == ACCEPT_CONTEXT);
                 break;
             case CCI_EVENT_CONNECT_REQUEST:
-                /* inspect conn_req_t and decide to accept or reject */
-                if (accept) {
-                    /* associate this connect request with this endpoint */
-                    cci_accept(event, ACCEPT_CONTEXT);
-                } else {
-                    cci_reject(event);
-                }
+                cci_accept(event, ACCEPT_CONTEXT);
                 break;
             case CCI_EVENT_ACCEPT:
                 fprintf(stderr, "completed accept\n");
@@ -86,6 +107,7 @@ int main(int argc, char *argv[])
 	cci_destroy_endpoint(endpoint);
 	cci_finalize();
 	free(uri);
+    free(msg);
 
 	return 0;
 
