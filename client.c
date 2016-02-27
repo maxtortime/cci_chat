@@ -1,12 +1,5 @@
-#include "cci.h"
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <assert.h>
+#include "cci_chat.h"
 
-int send_done = 0;
-int recv_done = 0;
 int flags = 0;
 /* By default the connection is reliable ordered; users can change the
    connection type via the command line */
@@ -19,7 +12,6 @@ int main(int argc, char *argv[])
 {
 	int done = 0, ret, c;
     int send_ret;
-    static int i = 0;
 	uint32_t caps = 0;
 	char *server_uri = NULL;
 	cci_os_handle_t *fd = NULL;
@@ -116,15 +108,13 @@ int main(int argc, char *argv[])
                     send_ret = cci_send(connection, msg, (uint32_t) strlen(msg),(void*)NULL, flags);
          
                     if (send_ret)
-                        fprintf(stderr, "send %d failed with %s\n", send_done,
-                            cci_strerror(endpoint, send_ret));
+                        fprintf(stderr, "Failed with %s\n", cci_strerror(endpoint, send_ret));
                     if (flags & CCI_FLAG_BLOCKING)
-                        fprintf(stderr, "send %d completed with %d\n", send_done, send_ret);
+                        fprintf(stderr, "Completed with %d\n", send_ret);
                 }
             }
 			continue;
 		}
-
        
         switch (event->type) {
             case CCI_EVENT_RECV: {
@@ -135,13 +125,6 @@ int main(int argc, char *argv[])
                 break;
                 }
             case CCI_EVENT_SEND: {
-                fprintf(stderr,"send %d completed with %d\n",
-                        (int)((uintptr_t) event->send.context),
-                        event->send.status);
-                i++;
-
-                if (done == 0) send_done++;
-                
                 break;
                 }
             case CCI_EVENT_CONNECT: {
@@ -151,7 +134,7 @@ int main(int argc, char *argv[])
                 connection = event->connect.connection;
 
                 break;
-                 }
+                }
             default:
                 fprintf(stderr,"ignoring event type %d\n", event->type);
                 break;

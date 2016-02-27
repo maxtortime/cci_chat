@@ -1,14 +1,4 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <assert.h>
-
-#include "cci.h"
-
-#define ACCEPT_CONTEXT (void*)0xfeebdaed
-#define SEND_CONTEXT (void*)0xdaedfeeb
-#define MSG_SIZE 128 
+#include "cci_chat.h"
 
 int main(int argc, char *argv[])
 {
@@ -70,7 +60,6 @@ int main(int argc, char *argv[])
 
         switch (event->type) {
             case CCI_EVENT_RECV: {
-
                     assert(event->recv.connection == connection);
                     assert(event->recv.connection-> context == ACCEPT_CONTEXT);
                     
@@ -79,8 +68,6 @@ int main(int argc, char *argv[])
                     break;
                 }
             case CCI_EVENT_SEND:
-                fprintf(stderr, "completed send\n");
-
                 assert(event->send.context == SEND_CONTEXT);
                 assert(event->send.connection == connection);
                 assert(event->send.connection->context == ACCEPT_CONTEXT);
@@ -89,8 +76,6 @@ int main(int argc, char *argv[])
                 cci_accept(event, ACCEPT_CONTEXT);
                 break;
             case CCI_EVENT_ACCEPT:
-                fprintf(stderr, "completed accept\n");
-
                 assert(event->accept.connection != NULL);
                 assert(event->accept.connection->context == ACCEPT_CONTEXT);
 
@@ -110,5 +95,4 @@ int main(int argc, char *argv[])
     free(msg);
 
 	return 0;
-
 }
