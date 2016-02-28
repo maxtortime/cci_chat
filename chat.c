@@ -14,11 +14,14 @@ int main(int argc, char *argv[])
     uint32_t caps = 0; // Don't know how to use 
     char *server_uri = NULL;
     int c = 0;
-
+    
+    time_t t = time(NULL);
     enum MODE mode = SERVER;
 
     cci_os_handle_t *fd = NULL;
     cci_endpoint_t *endpoint = NULL;
+    cci_connection_t *connection = NULL;
+    
     uint32_t timeout = 30 * 1000000;
 
     char* msg = calloc(MSG_SIZE, sizeof(char));
@@ -108,9 +111,76 @@ int main(int argc, char *argv[])
         cci_event_t *event;
 
         ret = cci_get_event(endpoint, &event);
+
+        if (ret != 0) {
+            if (ret != CCI_EAGAIN)
+                fprintf(stderr, "cci_get_event() returned %s\n",
+                        cci_strerror(endpoint, ret));
+            else {
+                if (connection) {
+                    printf("> ");
+                    fgets(msg, MSG_SIZE, stdin);
+
+                    /* Remove trailing newline, . */
+                    if ((strlen(msg)>0) && (msg[strlen(msg) - 1] == '\n')) 
+                        msg[strlen(msg) - 1] = '\0';
+
+                    ret = cci_send(connection, msg, MSG_SIZE, SEND_CONTEXT, 0);
+
+                    if (ret)
+                        fprintf(stderr, "send returned %s\n",
+                                cci_strerror(endpoint, ret));
+                }
+            }
+            continue;
+        }
+
+        switch (event->type) {
+            case CCI_EVENT_RECV:
+                    assert(event->recv.connection == connection);
+                    assert(event->recv.connection -> context == (mode ? ACCEPT_CONTEXT : CONNECT_CONTEXT));
+
+                    fprintf(stderr,"%s\n",(char *) event->recv.ptr);
+                break;
+            /* client do noting */
+            case CCI_EVENT_SEND:
+                if (mode == SERVER) {
+                    assert(event->send.context == SEND_CONTEXT);
+                    assert(event->send.connection == connection);
+                    assert(event->send.connection->context == ACCEPT_CONTEXT);
+                }
+                break;
+            /* for server */
+            case CCI_EVENT_CONNECT_REQUEST:
+                cci_accept(event, ACCEPT_CONTEXT);
+                break;
+            /* for server */
+            case CCI_EVENT_ACCEPT:
+                assert(event->accept.connection != NULL);
+                assert(event->accept.connection->context == ACCEPT_CONTEXT);
+                connection = event->accept.connection;
+                break;
+            /* for client */
+            case CCI_EVENT_CONNECT:
+                assert(event->connect.connection != NULL);
+                assert(event->connect.connection->context == CONNECT_CONTEXT);
+
+                connection = event->connect.connection;
+                break;
+            default:
+                fprintf(stderr,"ignoring event type %d\n",event->type);
+                break;
+        }
+        cci_return_event(event);
     }
+    /* clean up */
+    free(server_uri);
+    free(msg);
 
+    cci_destroy_endpoint(endpoint);
+    cci_finalize();
 
+    return 0;
 }
 
 void print_error(char* argv[], char* uri)
