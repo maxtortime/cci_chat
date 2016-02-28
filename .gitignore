@@ -1,6 +1,10 @@
+# Execution file of program
 client
 server
+chat
 
 client.o
 server.o
+
+
 

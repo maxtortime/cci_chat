@@ -1,12 +1,9 @@
-#include "cci_chat.h"
+#include "cci-chat.h"
 
 int flags = 0;
 /* By default the connection is reliable ordered; users can change the
    connection type via the command line */
 cci_conn_attribute_t attr = CCI_CONN_ATTR_RO;
-
-#define CONNECT_CONTEXT (void*)0xdeadbeef
-#define MSG_SIZE 128
 
 int main(int argc, char *argv[])
 {
@@ -109,8 +106,6 @@ int main(int argc, char *argv[])
          
                     if (send_ret)
                         fprintf(stderr, "Failed with %s\n", cci_strerror(endpoint, send_ret));
-                    if (flags & CCI_FLAG_BLOCKING)
-                        fprintf(stderr, "Completed with %d\n", send_ret);
                 }
             }
 			continue;

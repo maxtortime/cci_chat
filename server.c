@@ -1,4 +1,4 @@
-#include "cci_chat.h"
+#include "cci-chat.h"
 
 int main(int argc, char *argv[])
 {
