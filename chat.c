@@ -15,7 +15,6 @@ int main(int argc, char *argv[])
     char *server_uri = NULL;
     int c = 0;
     
-    time_t t = time(NULL);
     enum MODE mode = SERVER;
 
     cci_os_handle_t *fd = NULL;
@@ -53,9 +52,8 @@ int main(int argc, char *argv[])
         }
     } 
 
-    if (mode == CLIENT && !server_uri) {
+    if (mode == CLIENT && !server_uri) 
         print_error(argv, server_uri);
-    }
 
     /* both server and client do */
     /* initialize CCI */
@@ -138,11 +136,14 @@ int main(int argc, char *argv[])
         switch (event->type) {
             case CCI_EVENT_RECV:
                     assert(event->recv.connection == connection);
+                    /* server's context : ACCEPT 
+                     * client's context : CONNECT
+                     */
                     assert(event->recv.connection -> context == (mode ? ACCEPT_CONTEXT : CONNECT_CONTEXT));
 
                     fprintf(stderr,"%s\n",(char *) event->recv.ptr);
                 break;
-            /* client do noting */
+            /* client do noting when sending  */
             case CCI_EVENT_SEND:
                 if (mode == SERVER) {
                     assert(event->send.context == SEND_CONTEXT);
