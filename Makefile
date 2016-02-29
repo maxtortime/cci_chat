@@ -1,6 +1,6 @@
 LIB=-lcci -lpthread
 
-all: server client
+all: server client chat
 	echo "Done"
 
 server: server.c
@@ -8,6 +8,9 @@ server: server.c
 
 client: client.c
 	gcc -o client client.c $(LIB) 
+
+chat: chat.c
+	gcc -o chat chat.c $(LIB)
 
 remove:
 	rm client server
