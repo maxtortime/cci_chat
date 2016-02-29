@@ -19,11 +19,15 @@ typedef struct {
     cci_endpoint_t *endpoint;
     cci_connection_t *connection;
     cci_event_t *event;
+
+    char* msg;
+
+    int done; // 0 loop end , 1 keep
+    enum MODE mode;
 } cci_data;
 
 void print_error(char *argv[], char* uri);
 
+void poll_events(void *data);
 void* input_msg(void* chat);
-
-
 
