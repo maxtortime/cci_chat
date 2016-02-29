@@ -1,11 +1,7 @@
 #include "cci-chat.h"
 
 int flags = 0;
-enum MODE { CLIENT, SERVER };
 cci_conn_attribute_t attr = CCI_CONN_ATTR_RO;
-
-void print_error(char *argv[], char* uri);
-void input_msg(cci_endpoint_t* endpoint, cci_connection_t* connection, char* msg);
 
 int main(int argc, char *argv[])
 {
@@ -15,15 +11,20 @@ int main(int argc, char *argv[])
     char *server_uri = NULL;
     int c = 0;
 
-    enum MODE mode = SERVER;
+    int msg_thr_id; /* id of msg input thread */
+    pthread_t m_thread;
 
-    cci_os_handle_t *fd = NULL;
-    cci_endpoint_t *endpoint = NULL;
-    cci_connection_t *connection = NULL;
+    enum MODE mode = SERVER;
+    
+    cci_data* chat;
+
+    chat = malloc(sizeof(cci_data));
+    
+    chat->fd = NULL;
+    chat->endpoint = NULL;
+    chat->connection = NULL;
 
     uint32_t timeout = 30 * 1000000;
-
-    char* msg = calloc(MSG_SIZE, sizeof(char));
 
     if (argc > 1) // if argc is 2, server mode
     {
@@ -65,9 +66,9 @@ int main(int argc, char *argv[])
     }
 
     /* create an endpoint */
-    ret = cci_create_endpoint(NULL, 0, &endpoint, fd);
+    ret = cci_create_endpoint(NULL, 0, &(chat->endpoint), chat->fd);
     if (ret) {
-        fprintf(stderr, "cci_create_endpoint() failed with %s\n",
+        fprintf(stderr, "cci_create_chat->endpoint() failed with %s\n",
                 cci_strerror(NULL, ret));
         exit(EXIT_FAILURE);
     }
@@ -75,7 +76,7 @@ int main(int argc, char *argv[])
     if (mode == SERVER) 
     { 
         /* get option */
-        ret = cci_get_opt(endpoint,
+        ret = cci_get_opt(chat->endpoint,
                 CCI_OPT_ENDPT_URI, &server_uri);
         if (ret) {
             fprintf(stderr, "cci_get_opt() failed with %s\n", cci_strerror(NULL, ret));
@@ -86,21 +87,21 @@ int main(int argc, char *argv[])
     else if (mode == CLIENT) 
     {
         /* set conn tx timeout */
-        cci_set_opt(endpoint, CCI_OPT_ENDPT_SEND_TIMEOUT,
+        cci_set_opt(chat->endpoint, CCI_OPT_ENDPT_SEND_TIMEOUT,
                 &timeout);
         if (ret) {
             fprintf(stderr, "cci_set_opt() failed with %s\n",
-                    cci_strerror(endpoint, ret));
+                    cci_strerror(chat->endpoint, ret));
             exit(EXIT_FAILURE);
         }
 
         /* initiate connect */
         ret =
-            cci_connect(endpoint, server_uri, "Hello World!", 12,
+            cci_connect(chat->endpoint, server_uri, "Hello World!", 12,
                     attr, CONNECT_CONTEXT, 0, NULL);
         if (ret) {
             fprintf(stderr, "cci_connect() failed with %s\n",
-                    cci_strerror(endpoint, ret));
+                    cci_strerror(chat->endpoint, ret));
             exit(EXIT_FAILURE);
         }
     }
@@ -108,21 +109,21 @@ int main(int argc, char *argv[])
     while(!done) {
         cci_event_t *event;
 
-        ret = cci_get_event(endpoint, &event);
+        ret = cci_get_event(chat->endpoint, &event);
 
         if (ret != 0) {
             if (ret != CCI_EAGAIN)
                 fprintf(stderr, "cci_get_event() returned %s\n",
-                        cci_strerror(endpoint, ret));
-            else {
-                input_msg(endpoint, connection, msg);
-            }
+                        cci_strerror(chat->endpoint, ret));
+            else if(chat->connection) 
+                pthread_create(&m_thread, NULL, input_msg, (void*) chat);
+            
             continue;
         }
 
         switch (event->type) {
             case CCI_EVENT_RECV:
-                assert(event->recv.connection == connection);
+                assert(event->recv.connection == chat->connection);
                 /* server's context : ACCEPT 
                  * client's context : CONNECT
                  */
@@ -134,7 +135,7 @@ int main(int argc, char *argv[])
             case CCI_EVENT_SEND:
                 if (mode == SERVER) {
                     assert(event->send.context == SEND_CONTEXT);
-                    assert(event->send.connection == connection);
+                    assert(event->send.connection == chat->connection);
                     assert(event->send.connection->context == ACCEPT_CONTEXT);
                 }
                 break;
@@ -142,18 +143,17 @@ int main(int argc, char *argv[])
             case CCI_EVENT_CONNECT_REQUEST:
                 cci_accept(event, ACCEPT_CONTEXT);
                 break;
-                /* for server */
             case CCI_EVENT_ACCEPT:
                 assert(event->accept.connection != NULL);
                 assert(event->accept.connection->context == ACCEPT_CONTEXT);
-                connection = event->accept.connection;
+                chat->connection = event->accept.connection;
                 break;
                 /* for client */
             case CCI_EVENT_CONNECT:
                 assert(event->connect.connection != NULL);
                 assert(event->connect.connection->context == CONNECT_CONTEXT);
 
-                connection = event->connect.connection;
+                chat->connection = event->connect.connection;
                 break;
             default:
                 fprintf(stderr,"ignoring event type %d\n",event->type);
@@ -163,9 +163,9 @@ int main(int argc, char *argv[])
     }
     /* clean up */
     free(server_uri);
-    free(msg);
+    free(chat);
 
-    cci_destroy_endpoint(endpoint);
+    cci_destroy_endpoint(chat->endpoint);
     cci_finalize();
 
     return 0;
@@ -181,23 +181,32 @@ void print_error(char* argv[], char* uri)
     }
 }
 
-void input_msg(cci_endpoint_t* endpoint, cci_connection_t* connection, char* msg)
+void* input_msg(void *chat)
 {
     int ret = 0;
+    char* msg = calloc(MSG_SIZE,sizeof(char));
 
-    if (connection) {
-        printf("> ");
-        fgets(msg, MSG_SIZE, stdin);
+    cci_data* data = (cci_data*) chat;
+    
+    ret = cci_get_event(data->endpoint, &(data->event));
+    
+    cci_os_handle_t *fd = data->fd;
+    cci_endpoint_t *endpoint = data->endpoint;
+    cci_connection_t *connection = data->connection;
 
-        /* Remove trailing newline, . */
-        if ((strlen(msg)>0) && (msg[strlen(msg) - 1] == '\n')) 
-            msg[strlen(msg) - 1] = '\0';
+    printf("> ");
+    scanf("%s",msg);
 
-        ret = cci_send(connection, msg, MSG_SIZE, SEND_CONTEXT, 0);
+    /* Remove trailing newline, . */
+    if ((strlen(msg)>0) && (msg[strlen(msg) - 1] == '\n')) 
+        msg[strlen(msg) - 1] = '\0';
+    
+    ret = cci_send(connection, msg, MSG_SIZE, SEND_CONTEXT, 0);
 
-        if (ret)
-            fprintf(stderr, "send returned %s\n",
-                    cci_strerror(endpoint, ret));
-    }
+    if (ret)
+        fprintf(stderr, "send returned %s\n",
+                cci_strerror(endpoint, ret));
 
+    free(msg);
+    pthread_exit(NULL);
 }
