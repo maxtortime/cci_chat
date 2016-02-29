@@ -5,7 +5,7 @@ enum MODE { CLIENT, SERVER };
 cci_conn_attribute_t attr = CCI_CONN_ATTR_RO;
 
 void print_error(char *argv[], char* uri);
-void init(uint32_t* caps);
+void input_msg(cci_endpoint_t* endpoint, cci_connection_t* connection, char* msg);
 
 int main(int argc, char *argv[])
 {
@@ -14,13 +14,13 @@ int main(int argc, char *argv[])
     uint32_t caps = 0; // Don't know how to use 
     char *server_uri = NULL;
     int c = 0;
-    
+
     enum MODE mode = SERVER;
 
     cci_os_handle_t *fd = NULL;
     cci_endpoint_t *endpoint = NULL;
     cci_connection_t *connection = NULL;
-    
+
     uint32_t timeout = 30 * 1000000;
 
     char* msg = calloc(MSG_SIZE, sizeof(char));
@@ -115,35 +115,22 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "cci_get_event() returned %s\n",
                         cci_strerror(endpoint, ret));
             else {
-                if (connection) {
-                    printf("> ");
-                    fgets(msg, MSG_SIZE, stdin);
-
-                    /* Remove trailing newline, . */
-                    if ((strlen(msg)>0) && (msg[strlen(msg) - 1] == '\n')) 
-                        msg[strlen(msg) - 1] = '\0';
-
-                    ret = cci_send(connection, msg, MSG_SIZE, SEND_CONTEXT, 0);
-
-                    if (ret)
-                        fprintf(stderr, "send returned %s\n",
-                                cci_strerror(endpoint, ret));
-                }
+                input_msg(endpoint, connection, msg);
             }
             continue;
         }
 
         switch (event->type) {
             case CCI_EVENT_RECV:
-                    assert(event->recv.connection == connection);
-                    /* server's context : ACCEPT 
-                     * client's context : CONNECT
-                     */
-                    assert(event->recv.connection -> context == (mode ? ACCEPT_CONTEXT : CONNECT_CONTEXT));
+                assert(event->recv.connection == connection);
+                /* server's context : ACCEPT 
+                 * client's context : CONNECT
+                 */
+                assert(event->recv.connection -> context == (mode ? ACCEPT_CONTEXT : CONNECT_CONTEXT));
 
-                    fprintf(stderr,"%s\n",(char *) event->recv.ptr);
+                fprintf(stderr,"%s\n",(char *) event->recv.ptr);
                 break;
-            /* client do noting when sending  */
+                /* client do noting when sending  */
             case CCI_EVENT_SEND:
                 if (mode == SERVER) {
                     assert(event->send.context == SEND_CONTEXT);
@@ -151,17 +138,17 @@ int main(int argc, char *argv[])
                     assert(event->send.connection->context == ACCEPT_CONTEXT);
                 }
                 break;
-            /* for server */
+                /* for server */
             case CCI_EVENT_CONNECT_REQUEST:
                 cci_accept(event, ACCEPT_CONTEXT);
                 break;
-            /* for server */
+                /* for server */
             case CCI_EVENT_ACCEPT:
                 assert(event->accept.connection != NULL);
                 assert(event->accept.connection->context == ACCEPT_CONTEXT);
                 connection = event->accept.connection;
                 break;
-            /* for client */
+                /* for client */
             case CCI_EVENT_CONNECT:
                 assert(event->connect.connection != NULL);
                 assert(event->connect.connection->context == CONNECT_CONTEXT);
@@ -191,6 +178,26 @@ void print_error(char* argv[], char* uri)
         fprintf(stderr, "\t-c\tConnection type (UU, RU, or RO) "
                 "set by client; RO by default\n");
         exit(EXIT_FAILURE);
+    }
+}
+
+void input_msg(cci_endpoint_t* endpoint, cci_connection_t* connection, char* msg)
+{
+    int ret = 0;
+
+    if (connection) {
+        printf("> ");
+        fgets(msg, MSG_SIZE, stdin);
+
+        /* Remove trailing newline, . */
+        if ((strlen(msg)>0) && (msg[strlen(msg) - 1] == '\n')) 
+            msg[strlen(msg) - 1] = '\0';
+
+        ret = cci_send(connection, msg, MSG_SIZE, SEND_CONTEXT, 0);
+
+        if (ret)
+            fprintf(stderr, "send returned %s\n",
+                    cci_strerror(endpoint, ret));
     }
 
 }
