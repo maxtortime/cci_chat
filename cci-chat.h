@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <pthread.h>
+#include <fcntl.h>
 
 #define ACCEPT_CONTEXT (void*)0xfeebdaed
 #define SEND_CONTEXT (void*)0xdaedfeeb
